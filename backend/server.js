@@ -10,61 +10,85 @@ app.use(bodyParser.json());
 require('dotenv').config();
 const mongoURI = process.env.MONGO_URL;
 
+// Better error reporting for MongoDB connection
+console.log("Attempting to connect to MongoDB...");
+if (!mongoURI) {
+    console.error("MONGO_URL is not defined in .env file");
+    process.exit(1);
+}
+
 mongoose.connect(mongoURI)
-    .then(() => console.log("MongoDB Connected"))
-    .catch(err => console.log(err));
-
-const userDetailsSchema = new mongoose.Schema({
-    name: String,
-    dob: Date,
-    gender: String,
-    email: String,
-    location: String
-});
-
-const UserDetails = mongoose.model("UserDetails", userDetailsSchema);
-
-app.post("/submit", async (req, res) => {
-    const { name, dob, gender, email, location } = req.body;
-
-    const newUserDetails = new UserDetails({
-        name,
-        dob,
-        gender,
-        email,
-        location
+    .then(() => console.log("MongoDB Connected Successfully"))
+    .catch(err => {
+        console.error("MongoDB Connection Error:");
+        console.error(err);
+        console.error("Connection string used (hiding credentials):", 
+            mongoURI.replace(/:\/\/([^:]+):([^@]+)@/, "://****:****@"));
     });
 
+// Schema for form data in the format received from the frontend
+const formSchema = new mongoose.Schema({
+    title: String,
+    fields: [
+        {
+            id: String,
+            type: String,
+            label: String,
+            options: [String],
+            selectedOptions: [Number],
+            value: String
+        }
+    ]
+});
+
+const Form = mongoose.model("Form", formSchema);
+
+// POST endpoint to receive form data
+app.post("/api/forms", async (req, res) => {
     try {
-        await newUserDetails.save();
+        console.log("Received form submission:", JSON.stringify(req.body, null, 2));
+        
+        const formData = req.body;
+        const newForm = new Form(formData);
+        const savedForm = await newForm.save();
+        
+        console.log("Form saved successfully with ID:", savedForm._id);
+        
         res.json({
             message: "Form Submitted Successfully",
-            data: { name, dob, gender, email, location },
+            data: savedForm
         });
     } catch (error) {
-        res.status(500).json({ message: "Failed To Submit Form", error });
+        console.error("Error saving form:", error);
+        res.status(500).json({ message: "Failed To Submit Form", error: error.message });
     }
 });
 
-app.get("/users", async (req, res) => {
+// GET endpoint to retrieve all forms
+app.get("/api/forms", async (req, res) => {
     try {
-        const users = await UserDetails.find();
-        res.json({ users });
+        const forms = await Form.find();
+        console.log(`Retrieved ${forms.length} forms from database`);
+        res.json(forms);
     } catch (error) {
-        res.status(500).json({ message: "Failed To Fetch Users", error });
+        console.error("Error fetching forms:", error);
+        res.status(500).json({ message: "Failed To Fetch Forms", error: error.message });
     }
 });
 
-app.delete("/users/:id", async (req, res) => {
+// DELETE endpoint to delete a form
+app.delete("/api/forms/:id", async (req, res) => {
     try {
-        await UserDetails.findByIdAndDelete(req.params.id);
-        res.json({ message: "User Deleted Successfully" });
+        const result = await Form.findByIdAndDelete(req.params.id);
+        console.log(`Deleted form with ID: ${req.params.id}`);
+        res.json({ message: "Form Deleted Successfully" });
     } catch (error) {
-        res.status(500).json({ message: "Failed To Delete User", error });
+        console.error("Error deleting form:", error);
+        res.status(500).json({ message: "Failed To Delete Form", error: error.message });
     }
 });
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
-    console.log(`komathi's Server Connected`);
+    console.log(`Server running on port ${PORT}`);
 });
